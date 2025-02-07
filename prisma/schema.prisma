@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Make sure to set this in your .env file
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String?  @unique
+  bookings  Booking[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  carId         Int
+  car           Car           @relation(fields: [carId], references: [id], onDelete: Cascade)
+  bookingDate     DateTime
+  departure     String
+  destination   String
+  status        String        @default("PENDING") // PENDING, CONFIRMED, CANCELLED
+  transaction   Transaction?
+  transactionId String?       @unique // Links to Transaction if paid
+  addons        BookingAddon[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model BookingAddon {
+  bookingId String
+  addonId   Int
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  addon     Addon   @relation(fields: [addonId], references: [id], onDelete: Cascade)
+
+  @@id([bookingId, addonId]) // Composite key to prevent duplicate addons in a booking
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId   String   @unique
+  amount      Decimal  @db.Decimal(10, 2)
+  status      String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  reference   String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  price       Decimal @db.Decimal(10, 2)
+  imageUrl    String?
+  description String?
+  brands      CategoryBrand[]
+  cars        Car[]
+}
+
+model Brand {
+  id         Int        @id @default(autoincrement())
+  name       String     @unique
+  cars       Car[]
+  categories CategoryBrand[]
+}
+
+model CategoryBrand {
+  categoryId Int
+  brandId    Int
+
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  brand      Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, brandId])
+}
+
+model Car {
+  id          Int       @id @default(autoincrement())
+  name        String
+  brand       Brand     @relation(fields: [brandId], references: [id])
+  brandId     Int
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId  Int
+  description String?
+  price       Decimal   @db.Decimal(10, 2)
+  imageUrl    String?
+  features    Feature[]
+  addons      Addon[]
+  bookings    Booking[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime? @updatedAt
+}
+
+model Feature {
+  id           Int    @id @default(autoincrement())
+  car          Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId        Int
+  featureName  String
+  featureValue String
+
+  @@unique([carId, featureName]) // Prevents duplicate features for a car
+}
+
+model Addon {
+  id          Int             @id @default(autoincrement())
+  car         Car             @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId       Int
+  name        String
+  bookings    BookingAddon[]  // 🔥 Add this to fix the error
+
+  @@unique([carId, name]) // Prevents duplicate addons for a car
+}
+
