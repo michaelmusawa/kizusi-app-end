@@ -16,16 +16,28 @@ export async function getBookingById(id) {
   }
 }
 
-export async function fetchFilteredBookings(filter) {
+export async function fetchFilteredBookings(filter, query) {
+  console.log("filter", filter);
+  console.log("query", query);
   try {
     const result = await pool.query(
       `
       SELECT b.*, c.name AS "carName"
       FROM "Booking" b
       JOIN "Car" c ON b."carId" = c.id
-      WHERE b."userId" = $1
+      WHERE b."userId" = $1 AND 
+      (
+      b.departure ILIKE $2 OR
+      b.destination ILIKE $2 OR
+      CAST(b.amount AS TEXT) ILIKE $2 OR
+      b."bookType" ILIKE $2 OR
+       b."bookingStatus" ILIKE $2 OR
+        b."paymentStatus" ILIKE $2 OR
+        b."paymentType" ILIKE $2
+
+      )
       `,
-      [filter]
+      [filter, `%${query}%`]
     );
 
     return result.rows;

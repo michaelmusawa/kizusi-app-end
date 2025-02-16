@@ -19,7 +19,7 @@ export async function getCarById(id) {
         ) AS features,
         COALESCE(
           JSONB_AGG(
-            DISTINCT JSONB_BUILD_OBJECT('addonId', a.id, 'addonName', a.name)
+            DISTINCT JSONB_BUILD_OBJECT('addonId', a.id, 'addonName', a."addonName", 'addonValue', a."addonValue")
           ) FILTER (WHERE a.id IS NOT NULL), '[]'::jsonb
         ) AS addons
       FROM "Car" car
@@ -59,7 +59,7 @@ export async function fetchFilteredCars(filter, query, limit) {
         ) AS features,
         COALESCE(
           JSONB_AGG(
-            DISTINCT JSONB_BUILD_OBJECT('addonId', a.id, 'addonName', a.name)
+            DISTINCT JSONB_BUILD_OBJECT('addonId', a.id, 'addonName', a."addonName", 'addonValue', a."addonValue")
           ) FILTER (WHERE a.id IS NOT NULL), '[]'::jsonb
         ) AS addons
       FROM "Car" car

@@ -20,3 +20,15 @@ export async function addUser(data) {
   );
   return result.rows[0];
 }
+
+export async function updateUserById(data) {
+  const { id, name, email, password, phone, image } = data;
+  const result = await pool.query(
+    `UPDATE "User"
+     SET name = $2, email = $3, password = $4, phone = $5, image = $6
+     WHERE id = $1
+     RETURNING *`,
+    [id, name, email, password, phone, image]
+  );
+  return result.rows[0];
+}

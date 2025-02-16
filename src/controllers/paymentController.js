@@ -2,9 +2,11 @@ import axios from "axios";
 import pool from "../db.js";
 
 let token;
+let booking;
 
 export const initiatePayment = async (req, res) => {
   const {
+    bookingId,
     amount,
     email,
     phoneNumber,
@@ -14,16 +16,23 @@ export const initiatePayment = async (req, res) => {
     userId,
     carId,
     bookingDate,
+    departureLatitude,
+    departureLongitude,
+    destinationLatitude,
+    destinationLongitude,
     departure,
     destination,
     bookType,
     paymentType,
     addons,
+    image,
+    first_name: first_name,
+    last_name: last_name,
   } = req.body;
 
-  try {
-    // Pesapal API credentials and endpoint
+  const name = `${first_name} ${last_name}`;
 
+  try {
     const pesapalConsumerKey = "qkio1BGGYAXTu2JOfm7XSXNruoZsrqEW";
     const pesapalConsumerSecret = "osGQ364R49cXKeOYSpaOnT++rHs=";
     const pesapalEndpoint = "https://cybqa.pesapal.com/pesapalv3";
@@ -39,79 +48,123 @@ export const initiatePayment = async (req, res) => {
     const accessToken = tokenResponse.data.token;
     if (accessToken) {
       token = accessToken;
+    } else {
+      throw new Error("Failed to retrieve access token from Pesapal.");
     }
 
     // 🔹 Start database transaction
     const client = await pool.connect();
     try {
-      await client.query("BEGIN"); // Start transaction
+      // Check if user exists first
+      const userResult = await client.query(
+        `SELECT * FROM "User" WHERE id = $1`,
+        [userId]
+      );
+      if (userResult.rowCount === 0) {
+        await client.query(
+          `INSERT INTO "User" (id, name, email, phone, image, "clerkId") 
+            VALUES ($1, $2, $3, $4, $5, $6)`,
+          [userId, name, email, phoneNumber, image, userId]
+        );
+      }
 
-      // ✅ Create booking in database BEFORE sending payment request
-      const bookingQuery = `
-      INSERT INTO "Booking" (id, "userId", "carId", "bookingDate", amount, "departure", "destination", "paymentStatus", "bookType", "paymentType")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, $9)
+      // Check if transaction exists first
+      const bookingResult = await client.query(
+        `SELECT * FROM "Booking" WHERE id = $1`,
+        [bookingId]
+      );
+
+      if (bookingResult.rowCount === 0) {
+        // 🔹 Start transaction
+
+        await client.query("BEGIN"); // Start transaction
+
+        // ✅ Create booking in database BEFORE sending payment request
+        const bookingQuery = `
+      INSERT INTO "Booking" (
+      id,
+       "userId", 
+       "carId", 
+       "bookingDate", 
+       amount, 
+       "departure", 
+       "destination", 
+       "paymentStatus", 
+       "bookType", 
+       "paymentType", 
+       "departureLatitude",
+      "departureLongitude",
+      "destinationLatitude", 
+      "destinationLongitude")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, $9, $10, $11, $12, $13)
       RETURNING id;
     `;
 
-      const bookingResult = await pool.query(bookingQuery, [
-        reference, // Booking ID matches Pesapal reference
-        userId,
-        carId,
-        bookingDate,
-        amount,
-        departure,
-        destination,
-        bookType,
-        paymentType,
-      ]);
+        const bookingResult = await pool.query(bookingQuery, [
+          reference,
+          userId,
+          carId,
+          bookingDate,
+          amount,
+          departure,
+          destination,
+          bookType,
+          paymentType,
+          departureLatitude,
+          departureLongitude,
+          destinationLatitude,
+          destinationLongitude,
+        ]);
 
-      const bookingId = bookingResult.rows[0].id;
+        const bookingId = bookingResult.rows[0].id;
 
-      // ✅ Insert addons into "BookingAddon" table
-      if (addons && addons.length > 0) {
-        // Get addon IDs from addon names
-        const addonIds = [];
-        for (const addonName of addons) {
-          const addonResult = await pool.query(
-            `SELECT id FROM "Addon" WHERE name = $1`,
-            [addonName]
-          );
-          if (addonResult.rows.length > 0) {
-            addonIds.push(addonResult.rows[0].id);
-          } else {
-            throw new Error(`Addon '${addonName}' not found.`);
+        // ✅ Insert addons into "BookingAddon" table
+        if (addons && addons.length > 0) {
+          // Get addon IDs from addon names
+          const addonIds = [];
+          for (const addonName of addons) {
+            const addonResult = await pool.query(
+              `SELECT id FROM "Addon" WHERE "addonName" = $1`,
+              [addonName]
+            );
+            if (addonResult.rows.length > 0) {
+              addonIds.push(addonResult.rows[0].id);
+            } else {
+              throw new Error(`Addon '${addonName}' not found.`);
+            }
           }
-        }
 
-        // Insert addons into BookingAddon table
-        if (addonIds.length > 0) {
-          const addonQuery = `
+          // Insert addons into BookingAddon table
+          if (addonIds.length > 0) {
+            const addonQuery = `
         INSERT INTO "BookingAddon" ("bookingId", "addonId")
         VALUES ${addonIds.map((_, index) => `($1, $${index + 2})`).join(", ")}
       `;
 
-          await pool.query(addonQuery, [bookingId, ...addonIds]);
+            await pool.query(addonQuery, [bookingId, ...addonIds]);
+          }
         }
-      }
 
-      await client.query("COMMIT"); // Commit transaction
-      client.release(); // Release DB connection
+        await client.query("COMMIT"); // Commit transaction
+        client.release(); // Release DB connection
+      } else {
+        booking = bookingResult.rows[0];
+      }
 
       // Prepare the payment request payload
       const paymentRequest = {
         id: reference,
         currency: "KES",
-        amount: amount,
+        amount: amount ?? booking.amount,
         description: description,
         callback_url: callbackUrl,
-        notification_id: "1d4ba5e1-aa68-4d94-8644-dc34ebddffd9",
+        notification_id: "71629bde-2adf-4bf9-bdbd-dc26b342ed3a",
         billing_address: {
           email_address: email,
           phone_number: phoneNumber,
           country_code: "KE",
-          first_name: "John",
-          middle_name: "Musambati",
-          last_name: "Wechakhulia",
+          first_name: first_name,
+          last_name: last_name,
         },
       };
 
@@ -166,20 +219,36 @@ export const handlePaymentCallback = async (req, res) => {
     const paymentStatus =
       statusResponse.data.status_code === 1 ? "CONFIRMED" : "FAILED";
 
-    // Update the booking status
-    const updateBookingQuery = `
+    console.log("the booking", booking);
+
+    if (booking) {
+      // Update the booking status
+      const updateBookingQuery = `
       UPDATE "Booking"
-      SET "paymentStatus" = $1
+      SET "paymentType" = $1
       WHERE id = $2
       RETURNING id;
-    `;
-    const updateResult = await client.query(updateBookingQuery, [
-      paymentStatus,
-      OrderMerchantReference,
-    ]);
+      `;
+      const updateResult = await client.query(updateBookingQuery, [
+        "full",
+        booking.id,
+      ]);
+    } else {
+      // Update the booking status
+      const updateBookingQuery = `
+    UPDATE "Booking"
+    SET "paymentStatus" = $1
+    WHERE id = $2
+    RETURNING id;
+  `;
+      const updateResult = await client.query(updateBookingQuery, [
+        paymentStatus,
+        OrderMerchantReference,
+      ]);
 
-    if (updateResult.rowCount === 0) {
-      throw new Error("Booking not found.");
+      if (updateResult.rowCount === 0) {
+        throw new Error("Booking not found.");
+      }
     }
 
     // If payment was successful, record the transaction
@@ -190,7 +259,7 @@ export const handlePaymentCallback = async (req, res) => {
         RETURNING id;
       `;
       const newTransaction = await client.query(transactionQuery, [
-        OrderMerchantReference,
+        booking.id ?? OrderMerchantReference,
         statusResponse.data.amount,
         "SUCCESS",
         OrderTrackingId,

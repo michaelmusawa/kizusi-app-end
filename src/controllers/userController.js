@@ -1,4 +1,9 @@
-import { getUsers, addUser, getUserById } from "../actions/userActions.js";
+import {
+  getUsers,
+  addUser,
+  getUserById,
+  updateUserById,
+} from "../actions/userActions.js";
 
 export const fetchUsers = async (req, res) => {
   try {
@@ -41,5 +46,32 @@ export const createUser = async (req, res) => {
   } catch (error) {
     console.error("Error creating user:", error);
     res.status(500).json({ error: "Failed to create user" });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { name, email, password, phone, image } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res
+        .status(400)
+        .json({ error: "Name, email, phone and password are required" });
+    }
+
+    const updatedUser = await updateUserById({
+      id,
+      name,
+      email,
+      password,
+      phone,
+      image,
+    });
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ error: "Failed to update user" });
   }
 };

@@ -3,7 +3,7 @@ import {
   fetchBookings,
   fetchBookingById,
   cancelBooking,
-} from "../controllers/bookingController.js"; // Add `fetchCarById`
+} from "../controllers/bookingController.js";
 
 const bookingRouter = express.Router();
 

@@ -4,6 +4,6 @@ import { fetchCars, fetchCarById } from "../controllers/carController.js"; // Ad
 const carRouter = express.Router();
 
 carRouter.get("/", fetchCars);
-carRouter.get("/:id", fetchCarById); // New route for fetching car by ID
+carRouter.get("/:id", fetchCarById);
 
 export default carRouter;

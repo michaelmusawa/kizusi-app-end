@@ -7,10 +7,12 @@ import {
 export const fetchBookings = async (req, res) => {
   try {
     // Extract parameters from the query string
-    const { filter } = req.query;
+    const { filter, query } = req.query;
+
+    console.log("query", query);
 
     // Pass the parameters to getCategories
-    const bookings = await fetchFilteredBookings(filter);
+    const bookings = await fetchFilteredBookings(filter, query);
 
     res.status(200).json(bookings);
   } catch (error) {
