@@ -3,6 +3,8 @@ import {
   getBookingById,
   cancelBookingById,
 } from "../actions/bookingAction.js"; // Add `getCarById`
+import pool from "../db.js";
+import axios from "axios";
 
 export const fetchBookings = async (req, res) => {
   try {
@@ -38,24 +40,110 @@ export const fetchBookingById = async (req, res) => {
 };
 
 export const cancelBooking = async (req, res) => {
+  // Now cancel the booking. Here we use the 'id' from req.params.
+
+  console.log("Im here", req.body);
+  let token;
+
+  const { id } = req.params;
+  if (!id) {
+    return res
+      .status(400)
+      .json({ message: "Booking ID is required in URL parameters" });
+  }
+
+  console.log("booking id", id);
+
   try {
-    const { id } = req.params;
+    const { amount, first_name, last_name, remarks } = req.body;
+    const name = `${first_name} ${last_name}`;
 
-    if (!id) {
-      return res.status(400).json({ message: "Booking ID is required" });
+    // Query transactions for the booking
+    const transactionsResult = await pool.query(
+      `SELECT * FROM "Transaction" WHERE "bookingId" = $1`,
+      [id]
+    );
+
+    if (transactionsResult.rows.length < 0) {
+      return res
+        .status(404)
+        .json({ message: "No transactions found for booking" });
     }
 
-    const booking = await cancelBookingById(id);
+    const transactions = transactionsResult.rows;
 
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
+    console.log("DAm transaction", transactions);
+    // If there are two transactions, refund half the amount on each; if one, refund full amount.
+    const refundAmount = transactions.length === 2 ? amount / 2 : amount;
+
+    console.log("refund amount", refundAmount);
+
+    // Array to collect refund responses
+    const refundResponses = [];
+
+    // Process refund request for each transaction sequentially
+    for (const transaction of transactions) {
+      const refundRequest = {
+        confirmation_code: transaction.reference, // assuming 'reference' is the confirmation code
+        amount: refundAmount,
+        username: name,
+        remarks: remarks,
+      };
+
+      console.log("Refund request:", refundRequest);
+
+      const pesapalConsumerKey = "qkio1BGGYAXTu2JOfm7XSXNruoZsrqEW";
+      const pesapalConsumerSecret = "osGQ364R49cXKeOYSpaOnT++rHs=";
+      const pesapalEndpoint = "https://cybqa.pesapal.com/pesapalv3";
+
+      // Access Token
+      const tokenResponse = await axios.post(
+        `${pesapalEndpoint}/api/Auth/RequestToken`,
+        {
+          consumer_key: pesapalConsumerKey,
+          consumer_secret: pesapalConsumerSecret,
+        }
+      );
+
+      const accessToken = tokenResponse.data.token;
+
+      if (accessToken) {
+        token = accessToken;
+      } else {
+        throw new Error("Failed to retrieve access token from Pesapal.");
+      }
+
+      // Send refund request to Pesapal
+      const refundResponse = await axios.post(
+        `https://cybqa.pesapal.com/pesapalv3/api/Transactions/RefundRequest`,
+        refundRequest,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      refundResponses.push(refundResponse.data);
+      console.log("Refund response:", refundResponse.data);
     }
 
-    res
-      .status(200)
-      .json({ message: "Booking cancelled successfully", booking });
+    if (refundResponses[0].status === "200") {
+      const booking = await cancelBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      return res.status(200).json({
+        message: "Booking cancelled successfully",
+        booking,
+        refundResponses,
+      });
+    }
   } catch (error) {
-    console.error("Error cancelling booking by ID:", error);
-    res.status(500).json({ error: "Failed to cancel booking" });
+    console.error("Error cancelling booking:", error);
+    return res.status(500).json({ error: "Failed to cancel booking" });
   }
 };

@@ -26,8 +26,8 @@ export const initiatePayment = async (req, res) => {
     paymentType,
     addons,
     image,
-    first_name: first_name,
-    last_name: last_name,
+    first_name,
+    last_name,
   } = req.body;
 
   const name = `${first_name} ${last_name}`;
@@ -158,7 +158,7 @@ export const initiatePayment = async (req, res) => {
         amount: amount ?? booking.amount,
         description: description,
         callback_url: callbackUrl,
-        notification_id: "71629bde-2adf-4bf9-bdbd-dc26b342ed3a",
+        notification_id: "bb9ad3fe-1bf7-4eca-a1e1-dc25146c83d9",
         billing_address: {
           email_address: email,
           phone_number: phoneNumber,
@@ -219,47 +219,54 @@ export const handlePaymentCallback = async (req, res) => {
     const paymentStatus =
       statusResponse.data.status_code === 1 ? "CONFIRMED" : "FAILED";
 
-    console.log("the booking", booking);
-
-    if (booking) {
-      // Update the booking status
-      const updateBookingQuery = `
-      UPDATE "Booking"
-      SET "paymentType" = $1
-      WHERE id = $2
-      RETURNING id;
-      `;
-      const updateResult = await client.query(updateBookingQuery, [
-        "full",
-        booking.id,
-      ]);
-    } else {
-      // Update the booking status
-      const updateBookingQuery = `
-    UPDATE "Booking"
-    SET "paymentStatus" = $1
-    WHERE id = $2
-    RETURNING id;
-  `;
-      const updateResult = await client.query(updateBookingQuery, [
-        paymentStatus,
-        OrderMerchantReference,
-      ]);
-
-      if (updateResult.rowCount === 0) {
-        throw new Error("Booking not found.");
-      }
-    }
-
     // If payment was successful, record the transaction
     if (paymentStatus === "CONFIRMED") {
+      if (booking) {
+        // Update the booking status when booking is available
+        const updateBookingQuery = `
+          UPDATE "Booking"
+          SET "paymentType" = $1, amount = $2, "paymentStatus" = $3
+          WHERE id = $4
+          RETURNING id;
+        `;
+        const updateResult = await client.query(updateBookingQuery, [
+          "full",
+          statusResponse.data.amount * 2,
+          paymentStatus, // Adding paymentStatus to keep it up to date
+          booking.id,
+        ]);
+
+        if (updateResult.rowCount === 0) {
+          throw new Error("Booking not found.");
+        }
+      } else {
+        // Handle case where booking is not found
+        const updateBookingQuery = `
+          UPDATE "Booking"
+          SET "paymentStatus" = $1
+          WHERE id = $2
+          RETURNING id;
+        `;
+        const updateResult = await client.query(updateBookingQuery, [
+          paymentStatus,
+          OrderMerchantReference,
+        ]);
+
+        if (updateResult.rowCount === 0) {
+          throw new Error("Booking not found.");
+        }
+      }
+
       const transactionQuery = `
         INSERT INTO "Transaction" ("bookingId", amount, status, reference)
         VALUES ($1, $2, $3, $4)
         RETURNING id;
       `;
+
+      const bookingId =
+        booking && booking.id ? booking.id : OrderMerchantReference;
       const newTransaction = await client.query(transactionQuery, [
-        booking.id ?? OrderMerchantReference,
+        bookingId,
         statusResponse.data.amount,
         "SUCCESS",
         OrderTrackingId,

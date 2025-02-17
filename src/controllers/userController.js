@@ -55,10 +55,8 @@ export const updateUser = async (req, res) => {
   try {
     const { name, email, password, phone, image } = req.body;
 
-    if (!name || !email || !phone || !password) {
-      return res
-        .status(400)
-        .json({ error: "Name, email, phone and password are required" });
+    if (!name) {
+      return res.status(400).json({ error: "Name is required" });
     }
 
     const updatedUser = await updateUserById({
