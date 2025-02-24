@@ -92,7 +92,7 @@ export const cancelBooking = async (req, res) => {
     // Process refund for each transaction
     for (const transaction of transactions) {
       const refundRequest = {
-        confirmation_code: transaction.reference, // Ensure this is the correct field
+        confirmation_code: transaction.confirmationCode, // Ensure this is the correct field
         amount: parseFloat(refundAmount), // Ensure amount is a number
         username: name,
         remarks: remarks,

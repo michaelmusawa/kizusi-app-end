@@ -158,7 +158,7 @@ export const initiatePayment = async (req, res) => {
         amount: amount ?? booking.amount,
         description: description,
         callback_url: callbackUrl,
-        notification_id: "056af473-5c0c-44c8-9d81-dc2453fea03a",
+        notification_id: "89f07c1f-4ed8-4299-a475-dc1ea3ac1e3c",
         billing_address: {
           email_address: email,
           phone_number: phoneNumber,
@@ -216,6 +216,8 @@ export const handlePaymentCallback = async (req, res) => {
 
     // Check if the payment was successful
 
+    console.log("payment response from pesapal", statusResponse);
+
     const paymentStatus =
       statusResponse.data.status_code === 1 ? "CONFIRMED" : "FAILED";
 
@@ -258,8 +260,8 @@ export const handlePaymentCallback = async (req, res) => {
       }
 
       const transactionQuery = `
-        INSERT INTO "Transaction" ("bookingId", amount, status, reference)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO "Transaction" ("bookingId", amount, status, reference, "confirmationCode", "paymentMethod")
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id;
       `;
 
@@ -270,6 +272,8 @@ export const handlePaymentCallback = async (req, res) => {
         statusResponse.data.amount,
         "SUCCESS",
         OrderTrackingId,
+        statusResponse.data.confirmation_code,
+        statusResponse.data.payment_method,
       ]);
 
       if (!newTransaction.rows[0]) {
